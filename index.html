@@ -1,9 +1,11 @@
+<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3D 비행기 게임</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; color: #fff; font-family: 'Inter', sans-serif; }
         #info {
@@ -20,7 +22,7 @@
         #gameCanvas { display: block; }
         .controls-info {
             position: absolute;
-            bottom: 20px;
+            bottom: 80px; /* 버튼 공간 확보 */
             left: 50%;
             transform: translateX(-50%);
             background-color: rgba(0, 0, 0, 0.7);
@@ -30,6 +32,11 @@
             font-size: 0.9em;
             text-align: center;
             box-shadow: 0 0 10px rgba(255,255,255,0.2);
+            transition: opacity 0.3s ease-in-out;
+        }
+        .controls-info.hidden {
+            opacity: 0;
+            pointer-events: none;
         }
         .controls-info h3 {
             margin-top: 0;
@@ -41,6 +48,31 @@
         .controls-info p {
             margin: 5px 0;
         }
+        #buttonContainer {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 110;
+        }
+        .control-button {
+            background-color: rgba(50, 50, 50, 0.8);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 0.9em;
+        }
+        .control-button:hover {
+            background-color: rgba(80, 80, 80, 0.9);
+        }
+        .control-button i {
+            margin-right: 5px;
+        }
     </style>
 </head>
 <body>
@@ -49,7 +81,7 @@
         <p class="text-sm">Three.js를 사용한 간단한 예제</p>
     </div>
 
-    <div class="controls-info">
+    <div class="controls-info" id="controlsInfoPanel">
         <h3>조작 방법</h3>
         <p><strong>W:</strong> 앞으로 이동 / 속도 증가</p>
         <p><strong>S:</strong> 뒤로 이동 / 속도 감소</p>
@@ -62,6 +94,20 @@
     </div>
 
     <canvas id="gameCanvas"></canvas>
+
+    <audio id="bgm" loop>
+        <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg">
+        브라우저가 audio 태그를 지원하지 않습니다.
+    </audio>
+
+    <div id="buttonContainer">
+        <button id="toggleMusicBtn" class="control-button">
+            <i class="fas fa-music"></i> 음악 켜기
+        </button>
+        <button id="toggleControlsBtn" class="control-button">
+            <i class="fas fa-info-circle"></i> 조작법 숨기기
+        </button>
+    </div>
 
     <script type="importmap">
         {
@@ -76,45 +122,50 @@
         let scene, camera, renderer;
         let airplane;
         let ground;
+        let bgmElement, toggleMusicBtn, toggleControlsBtn, controlsInfoPanel;
+        let musicPlaying = false;
 
         // 비행기 상태 변수
         const airplaneState = {
             speed: 0.05,
             velocity: new THREE.Vector3(0, 0, 0),
-            rollSpeed: 0, // 사용되지 않음, turnRate로 대체
-            pitchSpeed: 0, // 사용되지 않음, turnRate로 대체
-            yawSpeed: 0, // 사용되지 않음, turnRate로 대체
             maxSpeed: 0.5,
             minSpeed: 0.01,
             acceleration: 0.005,
-            turnRate: 0.03, // 롤, 피치, 요 회전율
+            turnRate: 0.03, 
         };
 
         // 키보드 입력 상태
         const keysPressed = {};
 
         function init() {
+            // HTML 요소 가져오기
+            bgmElement = document.getElementById('bgm');
+            toggleMusicBtn = document.getElementById('toggleMusicBtn');
+            toggleControlsBtn = document.getElementById('toggleControlsBtn');
+            controlsInfoPanel = document.getElementById('controlsInfoPanel');
+
             // 장면 생성
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x87ceeb); // 하늘색 배경
-            scene.fog = new THREE.Fog(0x87ceeb, 100, 500); // 안개 효과
+            scene.background = new THREE.Color(0x87ceeb); 
+            scene.fog = new THREE.Fog(0x87ceeb, 100, 500); 
 
             // 카메라 생성
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 5, 10); // 카메라 초기 위치
+            camera.position.set(0, 5, 10); 
 
             // 렌더러 생성
             renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gameCanvas'), antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.shadowMap.enabled = true; // 그림자 활성화
+            renderer.shadowMap.enabled = true; 
 
             // 조명 추가
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); // 전체적인 주변광
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); 
             scene.add(ambientLight);
 
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0); // 태양광과 같은 직사광
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0); 
             directionalLight.position.set(10, 20, 5);
-            directionalLight.castShadow = true; // 그림자 생성 설정
+            directionalLight.castShadow = true; 
             directionalLight.shadow.mapSize.width = 1024;
             directionalLight.shadow.mapSize.height = 1024;
             scene.add(directionalLight);
@@ -125,14 +176,15 @@
             // 지면 생성
             createGround();
             
-            // 별 생성 (선택 사항)
+            // 별 생성
             createStars();
-
 
             // 이벤트 리스너 등록
             document.addEventListener('keydown', onKeyDown);
             document.addEventListener('keyup', onKeyUp);
             window.addEventListener('resize', onWindowResize);
+            toggleMusicBtn.addEventListener('click', toggleMusic);
+            toggleControlsBtn.addEventListener('click', toggleControlsInfo);
 
             // 애니메이션 루프 시작
             animate();
@@ -140,72 +192,81 @@
 
         function createAirplane() {
             airplane = new THREE.Group();
-
-            // 동체 (Cylinder)
-            // 오류 수정: 0xsilver -> 0xC0C0C0 (유효한 hex 값)
             const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xC0C0C0, metalness: 0.5, roughness: 0.5 });
             const bodyGeometry = new THREE.CylinderGeometry(0.5, 0.3, 3, 16);
             const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-            body.rotation.x = Math.PI / 2; // 가로로 눕히기 (로컬 Z축이 앞쪽이 되도록)
+            body.rotation.x = Math.PI / 2; 
             body.castShadow = true;
             airplane.add(body);
 
-            // 주 날개 (Box)
             const wingMaterial = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.5, roughness: 0.5 });
-            const wingGeometry = new THREE.BoxGeometry(6, 0.2, 1.5); // width, height, depth
+            const wingGeometry = new THREE.BoxGeometry(6, 0.2, 1.5); 
             const mainWing = new THREE.Mesh(wingGeometry, wingMaterial);
-            mainWing.position.y = 0; // 동체 중심에 위치
+            mainWing.position.y = 0; 
             mainWing.castShadow = true;
             airplane.add(mainWing);
 
-            // 꼬리 날개 - 수평 (Box)
             const tailWingGeometry = new THREE.BoxGeometry(2.5, 0.15, 0.8);
             const horizontalTailWing = new THREE.Mesh(tailWingGeometry, wingMaterial);
-            horizontalTailWing.position.z = -1.8; // 동체 뒤쪽으로
-            horizontalTailWing.position.y = 0.2; // 약간 위로
+            horizontalTailWing.position.z = -1.8; 
+            horizontalTailWing.position.y = 0.2; 
             horizontalTailWing.castShadow = true;
             airplane.add(horizontalTailWing);
 
-            // 꼬리 날개 - 수직 (Box)
             const verticalTailWingGeometry = new THREE.BoxGeometry(0.15, 1, 0.8);
             const verticalTailWing = new THREE.Mesh(verticalTailWingGeometry, wingMaterial);
-            verticalTailWing.position.z = -1.8; // 동체 뒤쪽으로
-            verticalTailWing.position.y = 0.6; // 수평 꼬리 날개 위로
+            verticalTailWing.position.z = -1.8; 
+            verticalTailWing.position.y = 0.6; 
             verticalTailWing.castShadow = true;
             airplane.add(verticalTailWing);
             
-            // 프로펠러 (선택 사항)
             const propellerMaterial = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8, roughness: 0.2 });
-            const propellerBladeGeometry = new THREE.BoxGeometry(0.1, 1.5, 0.1); // 두께, 길이, 폭
+            const propellerBladeGeometry = new THREE.BoxGeometry(0.1, 1.5, 0.1); 
             const propellerBlade1 = new THREE.Mesh(propellerBladeGeometry, propellerMaterial);
-            propellerBlade1.position.z = 1.6; // 동체 앞쪽 (로컬 Z축 기준)
+            propellerBlade1.position.z = 1.6; 
             const propellerBlade2 = propellerBlade1.clone();
-            propellerBlade2.rotation.z = Math.PI / 2; // 90도 회전하여 십자 모양
+            propellerBlade2.rotation.z = Math.PI / 2; 
             airplane.add(propellerBlade1);
             airplane.add(propellerBlade2);
 
-
-            airplane.position.set(0, 2, 0); // 비행기 초기 위치 (공중)
+            airplane.position.set(0, 2, 0); 
             scene.add(airplane);
         }
 
         function createGround() {
-            const groundTexture = new THREE.TextureLoader().load('https://placehold.co/1024x1024/34A853/FFFFFF?text=GroundTexture'); // 간단한 텍스처
-            groundTexture.wrapS = THREE.RepeatWrapping;
-            groundTexture.wrapT = THREE.RepeatWrapping;
-            groundTexture.repeat.set(50, 50); // 텍스처 반복
+            const groundTextureLoader = new THREE.TextureLoader();
+            groundTextureLoader.load(
+                'https://placehold.co/1024x1024/34A853/FFFFFF?text=GroundTexture',
+                function (texture) { // 성공 콜백
+                    texture.wrapS = THREE.RepeatWrapping;
+                    texture.wrapT = THREE.RepeatWrapping;
+                    texture.repeat.set(50, 50); 
 
-            const groundMaterial = new THREE.MeshStandardMaterial({ 
-                map: groundTexture,
-                roughness: 0.9, 
-                metalness: 0.1 
-            });
-            const groundGeometry = new THREE.PlaneGeometry(1000, 1000); // 넓은 지면
-            ground = new THREE.Mesh(groundGeometry, groundMaterial);
-            ground.rotation.x = -Math.PI / 2; // 바닥으로 눕히기
-            ground.position.y = -5; // 비행기 아래에 위치
-            ground.receiveShadow = true; // 그림자 받기
-            scene.add(ground);
+                    const groundMaterial = new THREE.MeshStandardMaterial({ 
+                        map: texture,
+                        roughness: 0.9, 
+                        metalness: 0.1 
+                    });
+                    const groundGeometry = new THREE.PlaneGeometry(1000, 1000); 
+                    ground = new THREE.Mesh(groundGeometry, groundMaterial);
+                    ground.rotation.x = -Math.PI / 2; 
+                    ground.position.y = -5; 
+                    ground.receiveShadow = true; 
+                    scene.add(ground);
+                },
+                undefined, // 진행 콜백 (필요시 사용)
+                function (err) { // 에러 콜백
+                    console.error('지면 텍스처 로딩 오류:', err);
+                    // 텍스처 로딩 실패 시 기본 재질 사용
+                    const fallbackMaterial = new THREE.MeshStandardMaterial({ color: 0x34A853, roughness: 0.9, metalness: 0.1 });
+                    const groundGeometry = new THREE.PlaneGeometry(1000, 1000);
+                    ground = new THREE.Mesh(groundGeometry, fallbackMaterial);
+                    ground.rotation.x = -Math.PI / 2;
+                    ground.position.y = -5;
+                    ground.receiveShadow = true;
+                    scene.add(ground);
+                }
+            );
         }
         
         function createStars() {
@@ -219,10 +280,10 @@
 
             const starVertices = [];
             for (let i = 0; i < 10000; i++) {
-                const x = THREE.MathUtils.randFloatSpread(2000); // -1000 to 1000
+                const x = THREE.MathUtils.randFloatSpread(2000); 
                 const y = THREE.MathUtils.randFloatSpread(2000);
                 const z = THREE.MathUtils.randFloatSpread(2000);
-                if (Math.sqrt(x*x + y*y + z*z) > 100) { // Avoid stars too close to center
+                if (Math.sqrt(x*x + y*y + z*z) > 100) { 
                      starVertices.push(x, y, z);
                 }
             }
@@ -232,10 +293,9 @@
             scene.add(stars);
         }
 
-
         function onKeyDown(event) {
             keysPressed[event.key.toLowerCase()] = true;
-            keysPressed[event.code] = true; // Arrow keys use event.code
+            keysPressed[event.code] = true; 
         }
 
         function onKeyUp(event) {
@@ -244,7 +304,8 @@
         }
 
         function updateAirplane() {
-            // 속도 조절
+            if (!airplane) return; // 비행기가 아직 로드되지 않았으면 업데이트 건너뛰기
+
             if (keysPressed['w']) {
                 airplaneState.speed = Math.min(airplaneState.maxSpeed, airplaneState.speed + airplaneState.acceleration);
             }
@@ -252,52 +313,42 @@
                 airplaneState.speed = Math.max(airplaneState.minSpeed, airplaneState.speed - airplaneState.acceleration);
             }
 
-            // 회전 (Roll, Pitch, Yaw)
-            // Roll (좌우 기울기): 왼쪽/오른쪽 화살표 - 비행기의 로컬 Z축 기준 회전
             if (keysPressed['ArrowLeft']) {
-                airplane.rotateZ(airplaneState.turnRate); // 왼쪽으로 롤
+                airplane.rotateZ(airplaneState.turnRate); 
             }
             if (keysPressed['ArrowRight']) {
-                airplane.rotateZ(-airplaneState.turnRate); // 오른쪽으로 롤
+                airplane.rotateZ(-airplaneState.turnRate); 
             }
 
-            // Pitch (상하 기울기): 위/아래 화살표 - 비행기의 로컬 X축 기준 회전
-            if (keysPressed['ArrowUp']) { // 기수 아래로
+            if (keysPressed['ArrowUp']) { 
                 airplane.rotateX(airplaneState.turnRate);
             }
-            if (keysPressed['ArrowDown']) { // 기수 위로
+            if (keysPressed['ArrowDown']) { 
                 airplane.rotateX(-airplaneState.turnRate);
             }
             
-            // Yaw (좌우 방향 전환): A/D 키 - 비행기의 로컬 Y축 기준 회전
             if (keysPressed['a']) {
-                airplane.rotateY(airplaneState.turnRate); // 왼쪽으로 요
+                airplane.rotateY(airplaneState.turnRate); 
             }
             if (keysPressed['d']) {
-                airplane.rotateY(-airplaneState.turnRate); // 오른쪽으로 요
+                airplane.rotateY(-airplaneState.turnRate); 
             }
 
-
-            // 비행기 전진 방향 벡터 계산 (로컬 -Z 축이 앞쪽)
             const forward = new THREE.Vector3(0, 0, -1); 
-            forward.applyQuaternion(airplane.quaternion); // 비행기의 현재 회전을 적용하여 월드 방향 벡터 얻기
+            forward.applyQuaternion(airplane.quaternion); 
             
-            // 비행기 이동
             airplane.position.addScaledVector(forward, airplaneState.speed);
 
-            // 간단한 고도 유지 (지면 아래로 못가게)
-            if (airplane.position.y < ground.position.y + 1) {
+            if (ground && airplane.position.y < ground.position.y + 1) {
                 airplane.position.y = ground.position.y + 1;
             }
             
-            // 카메라가 비행기를 따라다니도록 설정
-            const cameraOffset = new THREE.Vector3(0, 2, 7); // 카메라 오프셋 (비행기 로컬 좌표 기준: 뒤쪽 약간 위)
-            const worldOffset = cameraOffset.clone().applyMatrix4(airplane.matrixWorld); // 월드 좌표로 변환
+            const cameraOffset = new THREE.Vector3(0, 2, 7); 
+            const worldOffset = cameraOffset.clone().applyMatrix4(airplane.matrixWorld); 
             
-            camera.position.lerp(worldOffset, 0.1); // 카메라 위치 부드럽게 이동
-            camera.lookAt(airplane.position); // 항상 비행기를 바라보도록
+            camera.position.lerp(worldOffset, 0.1); 
+            camera.lookAt(airplane.position); 
         }
-
 
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
@@ -305,25 +356,45 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        function animate() {
-            requestAnimationFrame(animate);
-
-            updateAirplane();
-
-            // 프로펠러 회전 (선택 사항)
-            if (airplane && airplane.children.length > 4) { // 프로펠러가 추가되었다고 가정 (동체, 주날개, 수평꼬리, 수직꼬리 + 프로펠러2개)
-                // 프로펠러 식별을 좀 더 견고하게 할 수 있지만, 여기서는 순서에 의존
-                const propellerBlade1 = airplane.children[4]; 
-                const propellerBlade2 = airplane.children[5];
-                if(propellerBlade1) propellerBlade1.rotation.z += airplaneState.speed * 5; // 속도에 따라 회전 속도 변경
-                if(propellerBlade2) propellerBlade2.rotation.z += airplaneState.speed * 5;
+        function toggleMusic() {
+            if (musicPlaying) {
+                bgmElement.pause();
+                toggleMusicBtn.innerHTML = '<i class="fas fa-music"></i> 음악 켜기';
+            } else {
+                bgmElement.play().catch(error => {
+                    console.warn("음악 자동 재생 실패. 사용자 인터랙션이 필요할 수 있습니다.", error);
+                    // 일부 브라우저는 사용자 인터랙션 없이 자동 재생을 막습니다.
+                    // 이 경우, 첫 클릭 시 재생이 안될 수 있으며, 콘솔에 경고가 표시됩니다.
+                });
+                toggleMusicBtn.innerHTML = '<i class="fas fa-stop-circle"></i> 음악 끄기';
             }
-
-
-            renderer.render(scene, camera);
+            musicPlaying = !musicPlaying;
         }
 
-        // 초기화 함수 호출
+        let controlsVisible = true;
+        function toggleControlsInfo() {
+            controlsVisible = !controlsVisible;
+            if (controlsVisible) {
+                controlsInfoPanel.classList.remove('hidden');
+                toggleControlsBtn.innerHTML = '<i class="fas fa-info-circle"></i> 조작법 숨기기';
+            } else {
+                controlsInfoPanel.classList.add('hidden');
+                toggleControlsBtn.innerHTML = '<i class="fas fa-info-circle"></i> 조작법 보이기';
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            updateAirplane();
+
+            if (airplane && airplane.children.length > 4) { 
+                const propellerBlade1 = airplane.children[4]; 
+                const propellerBlade2 = airplane.children[5];
+                if(propellerBlade1) propellerBlade1.rotation.z += airplaneState.speed * 5; 
+                if(propellerBlade2) propellerBlade2.rotation.z += airplaneState.speed * 5;
+            }
+            renderer.render(scene, camera);
+        }
         init();
     </script>
 </body>
